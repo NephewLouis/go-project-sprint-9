@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+var mu sync.Mutex
 
 // Generator генерирует последовательность чисел 1,2,3 и т.д. и
 // отправляет их в канал ch. При этом после записи в канал для каждого числа
@@ -31,6 +34,7 @@ func Worker(in <-chan int64, out chan<- int64) {
 	defer close(out)
 	for num := range in {
 		out <- num
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 
@@ -46,11 +50,11 @@ func main() {
 
 	// генерируем числа, считая параллельно их количество и сумму
 	go Generator(ctx, chIn, func(i int64) {
-		inputSum += i
-		inputCount++
+		atomic.AddInt64(&inputSum, i)
+		atomic.AddInt64(&inputCount, 1)
 	})
 
-	const NumOut = 15 // количество обрабатывающих горутин и каналов
+	const NumOut = 5 // количество обрабатывающих горутин и каналов
 	// outs — слайс каналов, куда будут записываться числа из chIn
 	outs := make([]chan int64, NumOut)
 	for i := 0; i < NumOut; i++ {
@@ -71,8 +75,8 @@ func main() {
 		go func(idx int) {
 			defer wg.Done()
 			for num := range outs[idx] {
-				chOut <- num
 				amounts[idx]++
+				chOut <- num
 			}
 		}(i)
 	}
